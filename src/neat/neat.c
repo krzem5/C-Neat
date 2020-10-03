@@ -64,8 +64,7 @@ bool _is_same_species(struct _SPECIES* s,struct _GENOME* g){
 
 
 
-struct _GENOME* _clone_genome(struct _GENOME* g){
-	struct _GENOME* o=malloc(sizeof(struct _GENOME));
+void _clone_genome(struct _GENOME* g,struct _GENOME* o){
 	o->i=g->i;
 	o->l=g->l;
 	o->o=g->o;
@@ -91,7 +90,42 @@ struct _GENOME* _clone_genome(struct _GENOME* g){
 	}
 	o->n_id=g->n_id;
 	o->bn=g->bn;
-	return o;
+}
+
+
+
+struct _GENOME* _rand_genome(struct _SPECIES* s){
+	float tf=0;
+	for (uint16_t i=0;i<s->l;i++){
+		tf+=(*(s->g+i))->f;
+	}
+	float r=((float)rand())/RAND_MAX*tf;
+	float t=0;
+	for (uint16_t i=0;i<s->l;i++){
+		t+=(*(s->g+i))->f;
+		if (t>r){
+			return *(s->g+i);
+		}
+	}
+	// return *(s->g);
+}
+
+
+
+void _create_genome(struct _SPECIES* s,struct _GENOME* o){
+	struct _GENOME* a=_rand_genome(s);
+	if (rand()%100<25){
+		_clone_genome(a,o);
+	}
+	else{
+		struct _GENOME* b=_rand_genome(s);
+		if (a->f<b->f){
+			struct _GENOME* tmp=a;
+			a=b;
+			b=tmp;
+		}
+
+	}
 }
 
 
@@ -126,7 +160,7 @@ Population create_population(uint16_t sz,uint16_t in,uint16_t on,FittingFunction
 		(o->_g+i)->cg=NULL;
 		(o->_g+i)->n_id=in+on+1;
 		(o->_g+i)->bn=i;
-		(o->_g+i)->f=-1.23456f/*0*/;////////////////////////////////////////////////////////////
+		(o->_g+i)->f=0;
 	}
 	o->_sl=0;
 	o->_s=NULL;
@@ -166,12 +200,11 @@ void update_population(Population p){
 			(p->_s+p->_sl-1)->l=1;
 			(p->_s+p->_sl-1)->g=malloc(sizeof(struct _GENOME*));
 			*((p->_s+p->_sl-1)->g)=p->_g+i;
-			(p->_s+p->_sl-1)->bf=0;//////////////////////////////////////////////////////////////
+			(p->_s+p->_sl-1)->bf=0;
 			(p->_s+p->_sl-1)->st=0;
-			(p->_s+p->_sl-1)->rep=_clone_genome(p->_g+i);
+			_clone_genome(p->_g+i,(p->_s+p->_sl-1)->rep);
 		}
 	}
-	/*************************************************/
 	assert(p->_sl>0);
 	for (uint16_t i=0;i<p->_sl;i++){
 		assert((p->_s)->l>0);
@@ -189,12 +222,59 @@ void update_population(Population p){
 	if (p->_sl>1){
 		qsort(p->_s,p->_sl,sizeof(struct _SPECIES*),_cmp_species);
 	}
-	/*************************************************/
-	// cullSpecies();
-	// setBestPlayer();
-	// killStaleSpecies();
-	// killBadSpecies();
-	// printBest();
+	float af=0;
+	float* asf=malloc(p->_sl*sizeof(float));
+	for (uint16_t i=0;i<p->_sl;i++){
+		if ((p->_s+i)->st>=15){
+			continue;
+		}
+		if ((p->_s+i)->l>2){
+			(p->_s+i)->l/=2;
+			(p->_s+i)->g=realloc((p->_s+i)->g,(p->_s+i)->l*sizeof(struct _GENOME*));
+		}
+		*(asf+i)=0;
+		for (uint16_t j=0;j<(p->_s+i)->l;j++){
+			(*((p->_s+i)->g+j))->f/=(p->_s+i)->l;
+			*(asf+i)+=(*((p->_s+i)->g+j))->f;
+		}
+		af+=*(asf+i)/p->_sl;
+	}
+	af*=p->_gl;
+	uint16_t nsl=0;
+	struct _SPECIES* ns=NULL;
+	for (uint16_t i=0;i<p->_sl;i++){
+		if ((p->_s+i)->st>=15||(*(asf+i)/af)<1){
+			continue;
+		}
+		nsl++;
+		ns=realloc(ns,nsl*sizeof(struct _SPECIES));
+		*(ns+nsl-1)=*(p->_s+i);
+	}
+	free(p->_s);
+	p->_sl=nsl;
+	p->_s=ns;
+	// setAndPrintBestPlayer();
+	uint16_t ngi=0;
+	struct _GENOME* ng=malloc(p->_gl*sizeof(struct _GENOME));
+	for (uint16_t i=0;i<p->_sl;i++){
+		_clone_genome(*((p->_s+i)->g),ng+ngi);
+		ngi++;
+		for (uint16_t j=0;j<((uint16_t)(*(asf+i)/af))-1;j++){
+			_create_genome((p->_s+i),ng+ngi);
+			ngi++;
+		}
+	}
+	free(asf);
+	while (ngi<p->_gl){
+		_create_genome(p->_s,ng+ngi);
+		ngi++;
+	}
+	free(p->_g);
+	p->_g=ng;
+	for (uint16_t i=0;i<p->_gl;i++){
+		(p->_g+i)->generateNetwork();
+	}
+	p->g++;
 }
 
 
