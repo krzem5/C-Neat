@@ -44,6 +44,9 @@ struct _POPULATION{
 	struct _GENOME* _g;
 	uint16_t _sl;
 	struct _SPECIES* _s;
+	uint32_t _hl;
+	struct _HISTORY* _h;
+	uint32_t _nh;
 };
 
 
@@ -88,16 +91,28 @@ struct _NODE{
 	uint16_t l;
 	uint32_t outputConnectionsl;
 	struct _CONNECTION_GENE** outputConnections;
+	float _i;
+	float _o;
 };
 
 
 
 struct _CONNECTION_GENE{
-	struct _NODE* a;
-	struct _NODE* b;
+	uint32_t a;
+	uint32_t b;
 	float w;
 	bool e;
-	uint32_t innovationNo;
+	uint32_t id;
+};
+
+
+
+struct _HISTORY{
+	uint32_t a;
+	uint32_t b;
+	uint32_t id;
+	uint32_t nl;
+	uint32_t* n;
 };
 
 
