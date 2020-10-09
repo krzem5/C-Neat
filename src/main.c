@@ -27,7 +27,7 @@ float fit(NeuralNetwork nn){
 
 int main(int argc,const char** argv){
 	srand(1601797343/*(unsigned int)time(NULL*/);
-	Population p=create_population(150,2,1,fit);
+	Population p=create_population(5,2,1,fit);
 	while (true){
 		update_population(p);
 	}

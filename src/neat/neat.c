@@ -1,7 +1,6 @@
 #include <neat.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <crtdbg.h>
 
 
 
@@ -313,7 +312,7 @@ void _print_genome(struct _GENOME* g){
 	}
 	printf("};\nConnections={\n");
 	for (uint32_t i=0;i<g->cgl;i++){
-		printf("  [0x%lx]: %u %f 0x%lx,\n",(g->cg+i)->id,(g->cg+i)->e,(g->cg+i)->w,(g->cg+i)->b);
+		printf("  [0x%lx]: %u %f 0x%lx - 0x%lx,\n",(g->cg+i)->id,(g->cg+i)->e,(g->cg+i)->w,(g->cg+i)->a,(g->cg+i)->b);
 	}
 	printf("};\n=======================================================================================================================\n");
 }
@@ -332,50 +331,19 @@ int _cmp_species(const void* a,const void* b){
 
 
 
-uint32_t _getExcessDisjoint(struct _GENOME* a,struct _GENOME* b){
-	uint32_t o=a->cgl+b->cgl;
-	for (uint32_t i=0;i<a->cgl;i++){
-		for (uint32_t j=0;j<b->cgl;j++){
-			if ((a->cg+i)->id==(b->cg+j)->id){
-				o-=2;
-				break;
-			}
-		}
-	}
-	return(o);
-}
-
-
-
-float _averageWeightDiff(struct _GENOME* a,struct _GENOME* b){
-	if (a->cgl==0||b->cgl==0){
-		return(0);
-	}
-	uint32_t m=0;
-	float o=0;
-	for (uint32_t i=0;i<a->cgl;i++){
-		for (uint32_t j=0;j<b->cgl;j++){
-			if ((a->cg+i)->id==(b->cg+j)->id){
-				m++;
-				o+=((a->cg+i)->w>(b->cg+j)->w?(a->cg+i)->w-(b->cg+j)->w:(b->cg+j)->w-(a->cg+i)->w);
-				break;
-			}
-		}
-	}
-	if (m==0){
-		return(100.0f);
-	}
-	return(o/m);
-}
-
-
-
 bool _is_same_species(struct _SPECIES* s,struct _GENOME* g){
-	uint32_t excessAndDisjoint=_getExcessDisjoint(g,s->rep);
-	float averageWeightDiff=_averageWeightDiff(g,s->rep);
-	uint32_t largeGenomeNormaliser=(g->cgl<21?1:g->cgl-20);
-	float compatibility=(((float)excessAndDisjoint)/largeGenomeNormaliser)+(0.5f*averageWeightDiff);
-	return((3>compatibility?true:false));
+	uint32_t k=0;
+	float m=0;
+	for (uint32_t i=0;i<g->cgl;i++){
+		for (uint32_t j=0;j<s->rep->cgl;j++){
+			if ((g->cg+i)->id==(s->rep->cg+j)->id){
+				k++;
+				m+=((g->cg+i)->w>(s->rep->cg+j)->w?(g->cg+i)->w-(s->rep->cg+j)->w:(s->rep->cg+j)->w-(g->cg+i)->w);
+				break;
+			}
+		}
+	}
+	return((3>(g->cgl+s->rep->cgl==0?0:(g->cgl+s->rep->cgl-k*2.0f)/(g->cgl<21?1:g->cgl-20)+(k==0?50:m/k*0.5f))?true:false));
 }
 
 
@@ -432,9 +400,9 @@ struct _GENOME* _rand_genome(struct _SPECIES* s){
 
 
 
-uint32_t _get_id(struct _POPULATION* p,struct _GENOME* g,struct _NODE* a,struct _NODE* b){
+uint32_t _get_id(struct _POPULATION* p,struct _GENOME* g,uint32_t a,uint32_t b){
 	for (uint32_t i=0;i<p->_hl;i++){
-		if (g->cgl==(p->_h+i)->nl&&a->id==(p->_h+i)->a&&b->id==(p->_h+i)->b){
+		if (g->cgl==(p->_h+i)->nl&&(p->_h+i)->a==a&&(p->_h+i)->b==b){
 			bool m=true;
 			for (uint32_t j=0;j<g->cgl;j++){
 				bool f=false;
@@ -456,8 +424,8 @@ uint32_t _get_id(struct _POPULATION* p,struct _GENOME* g,struct _NODE* a,struct 
 	}
 	p->_hl++;
 	p->_h=realloc(p->_h,p->_hl*sizeof(struct _HISTORY));
-	(p->_h+p->_hl-1)->a=a->id;
-	(p->_h+p->_hl-1)->b=b->id;
+	(p->_h+p->_hl-1)->a=a;
+	(p->_h+p->_hl-1)->b=b;
 	(p->_h+p->_hl-1)->id=p->_nh;
 	(p->_h+p->_hl-1)->nl=g->cgl;
 	(p->_h+p->_hl-1)->n=malloc(g->cgl*sizeof(uint32_t));
@@ -470,6 +438,30 @@ uint32_t _get_id(struct _POPULATION* p,struct _GENOME* g,struct _NODE* a,struct 
 
 
 
+struct _NODE* _get_node(struct _GENOME* g,uint32_t id){
+	for (uint32_t i=0;i<g->nl;i++){
+		if ((g->n+i)->id==id){
+			return(g->n+i);
+		}
+	}
+	assert(0);
+	return(NULL);
+}
+
+
+
+struct _NODE* _get_node_nn(NeuralNetwork nn,uint32_t id){
+	for (uint32_t i=0;i<nn->nl;i++){
+		if ((nn->n+i)->id==id){
+			return(nn->n+i);
+		}
+	}
+	assert(0);
+	return(NULL);
+}
+
+
+
 void _add_cg(struct _GENOME* o,struct _POPULATION* p){
 	uint32_t* ln=malloc(o->l*sizeof(uint32_t));
 	for (uint16_t i=0;i<o->l;i++){
@@ -478,6 +470,7 @@ void _add_cg(struct _GENOME* o,struct _POPULATION* p){
 	for (uint32_t i=0;i<o->nl;i++){
 		(*(ln+(o->n+i)->l))++;
 	}
+	(*ln)--;
 	uint32_t tc=0;
 	for (uint16_t i=0;i<o->l-1;i++){
 		uint32_t bl=0;
@@ -487,14 +480,15 @@ void _add_cg(struct _GENOME* o,struct _POPULATION* p){
 		tc+=(*(ln+i))*bl;
 	}
 	free(ln);
-	if (tc==o->cgl){
+	assert(o->cgl<=tc);
+	if (o->cgl==tc){
 		printf("Connection Failed: Fully Connected!\n");
 		return();
 	}
 	uint32_t na=(uint32_t)(rand()%o->nl);
 	uint32_t nb=(uint32_t)(rand()%o->nl);
 	while (true){
-		if (na!=nb&&(o->n+na)->id!=(o->n+nb)->id&&(o->n+na)->l!=(o->n+nb)->l){
+		if (na!=nb&&na!=o->bn&&nb!=o->bn&&(o->n+na)->id!=(o->n+nb)->id&&(o->n+na)->l!=(o->n+nb)->l){
 			bool c=false;
 			if ((o->n+na)->l>(o->n+nb)->l){
 				for (uint32_t i=0;i<(o->n+nb)->outputConnectionsl;i++){
@@ -533,7 +527,7 @@ void _add_cg(struct _GENOME* o,struct _POPULATION* p){
 		(o->cg+o->cgl-1)->w=((float)rand())/RAND_MAX*2-1;
 	}
 	(o->cg+o->cgl-1)->e=true;
-	(o->cg+o->cgl-1)->id=_get_id(p,o,o->n+na,o->n+nb);
+	(o->cg+o->cgl-1)->id=_get_id(p,o,(o->n+na)->id,(o->n+nb)->id);
 	(o->n+na)->outputConnectionsl++;
 	(o->n+na)->outputConnections=realloc((o->n+na)->outputConnections,(o->n+na)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
 	*((o->n+na)->outputConnections+(o->n+na)->outputConnectionsl-1)=o->cg+o->cgl-1;
@@ -610,9 +604,9 @@ void _create_genome(struct _SPECIES* s,struct _GENOME* o,struct _POPULATION* p){
 					(o->cg+i)->id=(b->cg+i)->id;
 				}
 			}
-			(o->n+(o->cg+i)->a)->outputConnectionsl++;
-			(o->n+(o->cg+i)->a)->outputConnections=realloc((o->n+(o->cg+i)->a)->outputConnections,(o->n+(o->cg+i)->a)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
-			*((o->n+(o->cg+i)->a)->outputConnections+(o->n+(o->cg+i)->a)->outputConnectionsl-1)=o->cg+i;
+			_get_node(o,(o->cg+i)->a)->outputConnectionsl++;
+			_get_node(o,(o->cg+i)->a)->outputConnections=realloc(_get_node(o,(o->cg+i)->a)->outputConnections,_get_node(o,(o->cg+i)->a)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
+			*(_get_node(o,(o->cg+i)->a)->outputConnections+_get_node(o,(o->cg+i)->a)->outputConnectionsl-1)=o->cg+i;
 		}
 	}
 	if (o->cgl==0){
@@ -624,13 +618,7 @@ void _create_genome(struct _SPECIES* s,struct _GENOME* o,struct _POPULATION* p){
 				(o->cg+i)->w=((float)rand())/RAND_MAX*2-1;
 			}
 			else{
-				(o->cg+i)->w+=((float)rand())/RAND_MAX/50;
-				if ((o->cg+i)->w>1){
-					(o->cg+i)->w=1;
-				}
-				if ((o->cg+i)->w<-1){
-					(o->cg+i)->w=-1;
-				}
+				(o->cg+i)->w+=((float)rand())/(RAND_MAX*50);
 			}
 		}
 	}
@@ -646,11 +634,13 @@ void _create_genome(struct _SPECIES* s,struct _GENOME* o,struct _POPULATION* p){
 		while ((o->cg+rc)->a==o->bn&&o->cgl!=1){
 			rc=(uint32_t)(rand()%o->cgl);
 		}
+		/***/printf("\nBEFORE:\n");_print_genome(o);printf("RC: %lu (0x%lx)\n",rc,(o->cg+rc)->id);/***/
 		(o->cg+rc)->e=false;
+		struct _NODE* rc_a=_get_node(o,(o->cg+rc)->a);
 		o->nl++;
 		o->n=realloc(o->n,o->nl*sizeof(struct _NODE));
 		(o->n+o->nl-1)->id=o->n_id;
-		(o->n+o->nl-1)->l=(o->n+(o->cg+rc)->a)->l+1;
+		(o->n+o->nl-1)->l=rc_a->l+1;
 		(o->n+o->nl-1)->outputConnectionsl=0;
 		(o->n+o->nl-1)->outputConnections=NULL;
 		(o->n+o->nl-1)->_i=0;
@@ -662,17 +652,17 @@ void _create_genome(struct _SPECIES* s,struct _GENOME* o,struct _POPULATION* p){
 		(o->cg+o->cgl-3)->b=(o->n+o->nl-1)->id;
 		(o->cg+o->cgl-3)->w=1;
 		(o->cg+o->cgl-3)->e=true;
-		(o->cg+o->cgl-3)->id=_get_id(p,o,(o->n+(o->cg+rc)->a),o->n+o->nl-1);
+		(o->cg+o->cgl-3)->id=_get_id(p,o,rc_a->id,(o->n+o->nl-1)->id);
 		(o->cg+o->cgl-2)->a=(o->n+o->nl-1)->id;
 		(o->cg+o->cgl-2)->b=(o->cg+rc)->b;
 		(o->cg+o->cgl-2)->w=(o->cg+rc)->w;
 		(o->cg+o->cgl-2)->e=true;
-		(o->cg+o->cgl-2)->id=_get_id(p,o,o->n+o->nl-1,(o->n+(o->cg+rc)->b));
-		(o->cg+o->cgl-1)->a=o->bn;
+		(o->cg+o->cgl-2)->id=_get_id(p,o,(o->n+o->nl-1)->id,_get_node(o,(o->cg+rc)->b)->id);
+		(o->cg+o->cgl-1)->a=(o->n+o->bn)->id;
 		(o->cg+o->cgl-1)->b=(o->n+o->nl-1)->id;
 		(o->cg+o->cgl-1)->w=0;
 		(o->cg+o->cgl-1)->e=true;
-		(o->cg+o->cgl-1)->id=_get_id(p,o,o->n+o->bn,(o->n+o->nl-1));
+		(o->cg+o->cgl-1)->id=_get_id(p,o,(o->n+o->bn)->id,(o->n+o->nl-1)->id);
 		if ((o->n+o->nl-1)->l==(o->n+(o->cg+rc)->b)->l){
 			for (uint32_t i=0;i<o->nl-1;i++){
 				if ((o->n+i)->l>=(o->n+o->nl-1)->l){
@@ -681,15 +671,17 @@ void _create_genome(struct _SPECIES* s,struct _GENOME* o,struct _POPULATION* p){
 			}
 			o->l++;
 		}
-		(o->n+(o->cg+rc)->a)->outputConnectionsl++;
-		(o->n+(o->cg+rc)->a)->outputConnections=realloc((o->n+(o->cg+rc)->a)->outputConnections,(o->n+(o->cg+rc)->a)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
-		*((o->n+(o->cg+rc)->a)->outputConnections+(o->n+(o->cg+rc)->a)->outputConnectionsl-1)=o->cg+o->cgl-3;
+		rc_a->outputConnectionsl++;
+		rc_a->outputConnections=realloc(rc_a->outputConnections,rc_a->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
+		*(rc_a->outputConnections+rc_a->outputConnectionsl-1)=o->cg+o->cgl-3;
 		(o->n+o->nl-1)->outputConnectionsl++;
 		(o->n+o->nl-1)->outputConnections=realloc((o->n+o->nl-1)->outputConnections,(o->n+o->nl-1)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
 		*((o->n+o->nl-1)->outputConnections+(o->n+o->nl-1)->outputConnectionsl-1)=o->cg+o->cgl-2;
 		(o->n+o->bn)->outputConnectionsl++;
 		(o->n+o->bn)->outputConnections=realloc((o->n+o->bn)->outputConnections,(o->n+o->bn)->outputConnectionsl*sizeof(struct _CONNECTION_GENE*));
 		*((o->n+o->bn)->outputConnections+(o->n+o->bn)->outputConnectionsl-1)=o->cg+o->cgl-1;
+		/***/printf("AFTER:\n");_print_genome(o);printf("\n\n");/***/
+		assert(0);
 	}
 	return();
 }
@@ -806,6 +798,7 @@ void update_population(Population p){
 	float af=0;
 	float* asf=malloc(p->_sl*sizeof(float));
 	for (uint16_t i=0;i<p->_sl;i++){
+		*(asf+i)=0;
 		if ((p->_s+i)->st>=15){
 			continue;
 		}
@@ -813,7 +806,6 @@ void update_population(Population p){
 			(p->_s+i)->l/=2;
 			(p->_s+i)->g=realloc((p->_s+i)->g,(p->_s+i)->l*sizeof(struct _GENOME*));
 		}
-		*(asf+i)=0;
 		for (uint16_t j=0;j<(p->_s+i)->l;j++){
 			(*((p->_s+i)->g+j))->f/=(p->_s+i)->l;
 			*(asf+i)+=(*((p->_s+i)->g+j))->f;
@@ -830,10 +822,15 @@ void update_population(Population p){
 		ns=realloc(ns,nsl*sizeof(struct _SPECIES));
 		*(ns+nsl-1)=*(p->_s+i);
 	}
-	assert(ns!=NULL);
-	free(p->_s);
-	p->_sl=nsl;
-	p->_s=ns;
+	if (ns!=NULL){
+		free(p->_s);
+		p->_sl=nsl;
+		p->_s=ns;
+	}
+	else{
+		p->_sl=1;
+		p->_s=realloc(p->_s,sizeof(struct _SPECIES));
+	}
 	printf("Best NN: %f\n",(*(p->_s->g))->f*p->_s->l);
 	uint16_t ngi=0;
 	struct _GENOME* ng=malloc(p->_gl*sizeof(struct _GENOME));
@@ -868,12 +865,9 @@ void update_population(Population p){
 	for (uint16_t i=0;i<p->_gl;i++){
 		uint32_t nni=0;
 		struct _NODE* nn=malloc((p->_g+i)->nl*sizeof(struct _NODE));
-		uint32_t* nm=malloc((p->_g+i)->nl*sizeof(uint32_t));
 		for (uint16_t j=0;j<(p->_g+i)->l;j++){
 			for (uint32_t k=0;k<(p->_g+i)->nl;k++){
 				if (((p->_g+i)->n+k)->l==j){
-					assert(*(nm+((p->_g+i)->n+k)->id)==0xcdcdcdcd);
-					*(nm+((p->_g+i)->n+k)->id)=nni;
 					*(nn+nni)=*((p->_g+i)->n+k);
 					nni++;
 				}
@@ -881,14 +875,6 @@ void update_population(Population p){
 		}
 		free((p->_g+i)->n);
 		(p->_g+i)->n=nn;
-		if (all_defined(nm,sizeof(uint32_t))==false){
-			_print_genome(p->_g+i);
-			assert(0);
-		}
-		for (uint32_t j=0;j<(p->_g+i)->cgl;j++){
-			((p->_g+i)->cg+j)->a=*(nm+((p->_g+i)->cg+j)->a);
-			((p->_g+i)->cg+j)->b=*(nm+((p->_g+i)->cg+j)->b);
-		}
 	}
 	p->g++;
 	return();
@@ -911,8 +897,7 @@ void test_neural_network(NeuralNetwork nn,float* nn_i,float* nn_o){
 					get_mem_block((*((nn->n+i)->outputConnections+j)));
 					assert(0);
 				}
-				// _dump_mem((*((nn->n+i)->outputConnections+j)),sizeof(struct _CONNECTION_GENE));
-				(nn->n+(*((nn->n+i)->outputConnections+j))->b)->_i+=(*((nn->n+i)->outputConnections+j))->w*(nn->n+i)->_o;
+				_get_node_nn(nn,(*((nn->n+i)->outputConnections+j))->b)->_i+=(*((nn->n+i)->outputConnections+j))->w*(nn->n+i)->_o;
 			}
 		}
 	}
